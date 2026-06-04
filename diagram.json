@@ -3,29 +3,36 @@
   "author": "Cárthach Ó Nuanáin",
   "editor": "wokwi",
   "parts": [
-    { "type": "board-esp32-s3-devkitc-1", "id": "esp", "top": 163.02, "left": 90.97, "attrs": {} },
+    {
+      "type": "board-esp32-s3-devkitc-1",
+      "id": "esp",
+      "top": 249.42,
+      "left": -14.63,
+      "attrs": {}
+    },
     {
       "type": "board-ili9341-cap-touch",
       "id": "lcd1",
-      "top": -210.44,
-      "left": -86.78,
+      "top": -68.48,
+      "left": 14.34,
+      "rotate": 90,
       "attrs": {}
     }
   ],
   "connections": [
     [ "esp:TX", "$serialMonitor:RX", "", [] ],
     [ "esp:RX", "$serialMonitor:TX", "", [] ],
-    [ "lcd1:VCC", "esp:3V3.1", "red", [ "v0" ] ],
-    [ "lcd1:GND", "esp:GND.1", "black", [ "v0" ] ],
-    [ "lcd1:CS", "esp:10", "green", [ "v0" ] ],
-    [ "lcd1:RST", "esp:9", "green", [ "v0" ] ],
-    [ "lcd1:D/C", "esp:8", "green", [ "v0" ] ],
-    [ "lcd1:MOSI", "esp:11", "green", [ "v0" ] ],
-    [ "lcd1:SCK", "esp:12", "green", [ "v0" ] ],
-    [ "lcd1:LED", "esp:3V3.2", "green", [ "v0" ] ],
-    [ "lcd1:MISO", "esp:13", "green", [ "v0" ] ],
-    [ "lcd1:SCL", "esp:3", "green", [ "v0" ] ],
-    [ "lcd1:SDA", "esp:46", "green", [ "v0" ] ]
+    [ "esp:3V3.1", "lcd1:VCC", "green", [ "h-144.05", "v-249.6" ] ],
+    [ "esp:GND.1", "lcd1:GND", "black", [ "h-134.45", "v-441.6" ] ],
+    [ "lcd1:CS", "esp:10", "green", [ "h-115.2", "v374.4" ] ],
+    [ "esp:9", "lcd1:RST", "green", [ "h-115.25", "v-355.2" ] ],
+    [ "lcd1:D/C", "esp:8", "green", [ "h-96", "v316.8" ] ],
+    [ "lcd1:MOSI", "esp:11", "green", [ "h-86.4", "v355.2" ] ],
+    [ "lcd1:SCK", "esp:12", "green", [ "h-76.8", "v355.2" ] ],
+    [ "lcd1:LED", "esp:3V3.2", "green", [ "h-67.2", "v192" ] ],
+    [ "lcd1:MISO", "esp:13", "green", [ "h-57.6", "v345.6" ] ],
+    [ "lcd1:SCL", "esp:3", "green", [ "h-48", "v278.4" ] ],
+    [ "lcd1:SDA", "esp:46", "green", [ "h-38.4", "v278.4" ] ]
   ],
   "dependencies": {}
 }
