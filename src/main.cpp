@@ -29,11 +29,10 @@ static uint32_t my_tick(void) {
 void touch_read(lv_indev_t * indev, lv_indev_data_t * data)
 {
     if(ctp.touched()) {        
-        TS_Point point = ctp.getPoint();
-        data->point.x = point.x;
-        data->point.y = point.y;
-        data->point.x = map(data->point.x, 240, 0, 0, tft.width());
-        data->point.y = map(data->point.y, 320, 0, 0, tft.height());
+        TS_Point point = ctp.getPoint();        
+        data->point.x = point.y;
+        data->point.y = map(point.x, 240, 0, 0, tft.height());
+
         data->state = LV_INDEV_STATE_PRESSED;
     } else {
         data->state = LV_INDEV_STATE_RELEASED;
@@ -85,7 +84,7 @@ void setup() {
     lv_tick_set_cb(my_tick);
 
     tft.begin();
-    tft.setRotation(0);
+    tft.setRotation(1);  // Match the landscape orientation of the display
 
       // Calibrate the touch screen and retrieve the scaling factors
 #ifdef WOKWI
@@ -96,7 +95,7 @@ void setup() {
 #endif
 
     /* Create a display object */
-    lv_display_t *disp = lv_display_create(240, 320);
+    lv_display_t *disp = lv_display_create(320, 240);
     lv_display_set_flush_cb(disp, my_disp_flush);
 
     // This needs to come after the display is initialized
@@ -105,7 +104,7 @@ void setup() {
     lv_indev_set_read_cb(indev, touch_read);
     
     /* Initialize buffers */
-    static uint8_t buf1[320 * 10 * 2]; 
+    static uint8_t buf1[320 * 40]; 
     lv_display_set_buffers(disp, buf1, NULL, sizeof(buf1), LV_DISPLAY_RENDER_MODE_PARTIAL);
 
     lv_obj_t *btn = lv_btn_create(lv_screen_active());
