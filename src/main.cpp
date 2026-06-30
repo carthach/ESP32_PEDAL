@@ -45,7 +45,7 @@ void touch_read(lv_indev_t * indev, lv_indev_data_t * data)
     bool pressed = tft.getTouch(&t_x, &t_y);
     if(pressed) {                
         data->point.x = t_x;
-        data->point.y = t_y;
+        data->point.y = map(t_y, 0, 240, tft.height(), 0);
         data->state = LV_INDEV_STATE_PRESSED;
     } else {
         data->state = LV_INDEV_STATE_RELEASED;
@@ -107,24 +107,47 @@ void setup() {
     static uint8_t buf1[320 * 40]; 
     lv_display_set_buffers(disp, buf1, NULL, sizeof(buf1), LV_DISPLAY_RENDER_MODE_PARTIAL);
 
-    lv_obj_t *btn = lv_btn_create(lv_screen_active());
-    lv_obj_align(btn, LV_ALIGN_CENTER, 0, 40);
-    lv_obj_t *btn_label = lv_label_create(btn);
-    lv_label_set_text(btn_label, "Click Me");
-    lv_obj_center(btn_label);
+    lv_obj_t * screen = lv_screen_active();
+    lv_obj_set_flex_flow(screen, LV_FLEX_FLOW_COLUMN);
+    lv_obj_set_style_flex_main_place(screen, LV_FLEX_ALIGN_CENTER, 0);
+    lv_obj_set_style_flex_cross_place(screen, LV_FLEX_ALIGN_CENTER, 0);
+    lv_obj_set_style_flex_track_place(screen, LV_FLEX_ALIGN_CENTER, 0);
 
-    lv_obj_add_event_cb(btn, btn_event_cb, LV_EVENT_CLICKED, NULL);
+    /* Main grid container with fixed descriptors */
+    lv_obj_t * container = lv_obj_create(screen);
+    int32_t cell_width = 65;
+    static const int32_t container_style_grid_column_dsc_array_0[] = {cell_width, cell_width, cell_width, cell_width, LV_GRID_TEMPLATE_LAST};
+    lv_obj_set_style_grid_column_dsc_array(container, container_style_grid_column_dsc_array_0, 0);
+    static const int32_t container_style_grid_row_dsc_array_1[] = {160, 50, LV_GRID_TEMPLATE_LAST};
+    lv_obj_set_style_grid_row_dsc_array(container, container_style_grid_row_dsc_array_1, 0);
+    lv_obj_set_style_layout(container, LV_LAYOUT_GRID, 0);
+    lv_obj_set_size(container, 320, 240);
     
-    /*Create a slider in the center of the display*/
-    lv_obj_t * slider = lv_slider_create(lv_screen_active());
-    lv_obj_set_width(slider, 200);                          /*Set the width*/
-    lv_obj_center(slider);                                  /*Align to the center of the parent (screen)*/
-    lv_obj_add_event_cb(slider, slider_event_cb, LV_EVENT_VALUE_CHANGED, NULL);     /*Assign an event function*/
+    lv_obj_t *sliders[4];
+    lv_obj_t * btns[4];
     
-    /*Create a label above the slider*/
-    label = lv_label_create(lv_screen_active());
-    lv_label_set_text(label, "0");
-    lv_obj_align_to(label, slider, LV_ALIGN_OUT_TOP_MID, 0, -15);    /*Align top of the slider*/
+    for(int i=0; i<4; i++) {
+        sliders[i] = lv_slider_create(container);
+        lv_slider_set_orientation(sliders[i], LV_SLIDER_ORIENTATION_VERTICAL);    
+        lv_obj_set_size(sliders[i], 30, 140);    
+        lv_obj_set_style_grid_cell_x_align(sliders[i], LV_GRID_ALIGN_CENTER, 0);
+        lv_obj_set_style_grid_cell_column_pos(sliders[i], i, 0);
+        lv_obj_set_style_grid_cell_y_align(sliders[i], LV_GRID_ALIGN_CENTER, 0);
+        lv_obj_set_style_grid_cell_row_pos(sliders[i], 0, 0);
+        
+        btns[i] = lv_btn_create(container);
+        lv_obj_set_style_grid_cell_x_align(btns[i], LV_GRID_ALIGN_CENTER, 0);
+        lv_obj_set_style_grid_cell_column_pos(btns[i], i, 0);
+        lv_obj_set_style_grid_cell_y_align(btns[i], LV_GRID_ALIGN_CENTER, 0);
+        lv_obj_set_style_grid_cell_row_pos(btns[i], 1, 0);
+        
+    
+        lv_obj_set_flag(btns[i], LV_OBJ_FLAG_CHECKABLE, true);
+        lv_obj_set_state(btns[i], LV_STATE_CHECKED, true);
+        lv_obj_t * label = lv_label_create(btns[i]);
+        lv_obj_set_align(label, LV_ALIGN_CENTER);
+        lv_label_set_text(label, itoa(i, new char[3], 10));
+    }    
 }
 
 void loop() {
