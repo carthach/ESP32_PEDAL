@@ -1,6 +1,17 @@
-#include <Arduino.h>
 #include <lvgl.h>
 #include <TFT_eSPI.h>
+
+#define ESP32_HOST_MIDI_NO_USB_HOST
+#include <ESP32_Host_MIDI.h>
+#include "USBDeviceConnection.h"
+
+USBDeviceConnection usbMIDI("ESP32 MIDI");
+
+lv_obj_t *sliders[4];
+lv_obj_t * btns[4];
+
+#define POT_PIN 4
+
 #ifdef WOKWI
 #include <Wire.h>
 #include <Adafruit_FT6206.h> // Touch library
@@ -58,12 +69,12 @@ static void btn_event_cb(lv_event_t * e)
     lv_event_code_t code = lv_event_get_code(e);
     lv_obj_t * btn = lv_event_get_target_obj(e);
     if(code == LV_EVENT_CLICKED) {
-        
-        static uint8_t cnt = 0;
-        cnt++;
-        /*Get the first child of the button which is the label and change its text*/
-        lv_obj_t * label = lv_obj_get_child(btn, 0);
-        lv_label_set_text_fmt(label, "Button: %d", cnt);
+        for(int i=0; i<4; i++) {
+            if(btn == btns[i]) {
+                bool isChecked = lv_obj_has_state(btn, LV_STATE_CHECKED);
+                midiHandler.sendControlChange(i+1, 2, isChecked ? 127 : 0);                
+            }
+        }
     }
 }
 
@@ -72,14 +83,18 @@ static lv_obj_t * label;
 static void slider_event_cb(lv_event_t * e)
 {
     lv_obj_t * slider = lv_event_get_target_obj(e);
-    /*Refresh the text*/
-    lv_label_set_text_fmt(label, "%" LV_PRId32, lv_slider_get_value(slider));
-    lv_obj_align_to(label, slider, LV_ALIGN_OUT_TOP_MID, 0, -15);    /*Align top of the slider*/
+
+    for(int i=0; i<4; i++) {
+        if(slider == sliders[i]) {
+            int32_t value = lv_slider_get_value(slider);        
+            midiHandler.sendControlChange(i+1, 1, value);            
+        }
+    }
+
+    
 }
 
-void setup() {    
-    Serial.begin(115200);
-    
+void setup() {           
     lv_init();
     lv_tick_set_cb(my_tick);
 
@@ -123,9 +138,6 @@ void setup() {
     lv_obj_set_style_layout(container, LV_LAYOUT_GRID, 0);
     lv_obj_set_size(container, 320, 240);
     
-    lv_obj_t *sliders[4];
-    lv_obj_t * btns[4];
-    
     for(int i=0; i<4; i++) {
         sliders[i] = lv_slider_create(container);
         lv_slider_set_orientation(sliders[i], LV_SLIDER_ORIENTATION_VERTICAL);    
@@ -134,12 +146,15 @@ void setup() {
         lv_obj_set_style_grid_cell_column_pos(sliders[i], i, 0);
         lv_obj_set_style_grid_cell_y_align(sliders[i], LV_GRID_ALIGN_CENTER, 0);
         lv_obj_set_style_grid_cell_row_pos(sliders[i], 0, 0);
+        lv_obj_add_event_cb(sliders[i], slider_event_cb, LV_EVENT_VALUE_CHANGED, NULL);
+        lv_slider_set_range(sliders[i], 0, 127);
         
         btns[i] = lv_btn_create(container);
         lv_obj_set_style_grid_cell_x_align(btns[i], LV_GRID_ALIGN_CENTER, 0);
         lv_obj_set_style_grid_cell_column_pos(btns[i], i, 0);
         lv_obj_set_style_grid_cell_y_align(btns[i], LV_GRID_ALIGN_CENTER, 0);
         lv_obj_set_style_grid_cell_row_pos(btns[i], 1, 0);
+        lv_obj_add_event_cb(btns[i], btn_event_cb, LV_EVENT_CLICKED, NULL);
         
     
         lv_obj_set_flag(btns[i], LV_OBJ_FLAG_CHECKABLE, true);
@@ -147,10 +162,17 @@ void setup() {
         lv_obj_t * label = lv_label_create(btns[i]);
         lv_obj_set_align(label, LV_ALIGN_CENTER);
         lv_label_set_text(label, itoa(i, new char[3], 10));
-    }    
+    }
+
+    midiHandler.addTransport(&usbMIDI);
+    usbMIDI.begin();
+    midiHandler.begin();
+
+    // Serial.begin(115200);
+    // Serial.println("USB Serial connection established successfully!");
 }
 
 void loop() {
     lv_timer_handler(); /* Update UI */
-    delay(5);    
+    delay(20);        
 }
