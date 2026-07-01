@@ -10,7 +10,10 @@ USBDeviceConnection usbMIDI("ESP32 MIDI");
 lv_obj_t *sliders[4];
 lv_obj_t * btns[4];
 
-#define POT_PIN 4
+#define N_INPUTS 3
+
+int pot_pins[] = {4, 5, 6};
+int switch_pins[] = {1, 2, 42};
 
 #ifdef WOKWI
 #include <Wire.h>
@@ -168,11 +171,25 @@ void setup() {
     usbMIDI.begin();
     midiHandler.begin();
 
-    // Serial.begin(115200);
-    // Serial.println("USB Serial connection established successfully!");
+    for(int i=0; i<N_INPUTS; i++) {
+        pinMode(pot_pins[i], INPUT);
+        pinMode(switch_pins[i], INPUT_PULLUP);
+    }
+
+    Serial.begin(115200);
+    Serial.println("USB Serial connection established successfully!");
 }
 
 void loop() {
     lv_timer_handler(); /* Update UI */
-    delay(20);        
+    delay(20);
+    
+    for(int i=0; i<N_INPUTS; i++) {
+        int raw_adc = analogRead(pot_pins[i]);
+        int slider_value = map(raw_adc, 0, 4095, 0, 127);
+        lv_slider_set_value(sliders[i], slider_value, LV_ANIM_ON);
+
+        int switch_state = digitalRead(switch_pins[i]);                
+        lv_obj_set_state(btns[i], LV_STATE_CHECKED, switch_state ? false : true);
+    }
 }
