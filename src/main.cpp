@@ -3,9 +3,16 @@
 
 #define ESP32_HOST_MIDI_NO_USB_HOST
 #include <ESP32_Host_MIDI.h>
-#include "USBDeviceConnection.h"
 
+#ifdef WOKWI
+#include <WiFi.h>
+#include <AppleMIDI.h>
+#include "RTPMIDIConnection.h"
+RTPMIDIConnection rtpMIDI;
+#else
+#include "USBDeviceConnection.h"
 USBDeviceConnection usbMIDI("ESP32 MIDI");
+#endif
 
 lv_obj_t *sliders[4];
 lv_obj_t * btns[4];
@@ -90,7 +97,7 @@ static void slider_event_cb(lv_event_t * e)
     for(int i=0; i<4; i++) {
         if(slider == sliders[i]) {
             int32_t value = lv_slider_get_value(slider);        
-            midiHandler.sendControlChange(i+1, 1, value);            
+            midiHandler.sendControlChange(i+1, 1, value);
         }
     }
 
@@ -167,8 +174,22 @@ void setup() {
         lv_label_set_text(label, itoa(i, new char[3], 10));
     }
 
+#ifdef WOKWI
+    WiFi.begin("Wokwi-GUEST", "", 6);
+    while (WiFi.status() != WL_CONNECTED) delay(500);
+    midiHandler.addTransport(&rtpMIDI);
+    rtpMIDI.begin();
+
+    // Needed for Wokwi to connect to the free Wokwi gateway (host.wokwi.internal) for AppleMIDI.
+    // I don't know how or why but thanks Claude    
+    IPAddress ip;
+    if (WiFi.hostByName("host.wokwi.internal", ip))
+        _rtpMidiInternal::Applemidi.sendInvite(ip, 5004);
+#else
     midiHandler.addTransport(&usbMIDI);
-    usbMIDI.begin();
+    usbMIDI.begin();    
+#endif
+
     midiHandler.begin();
 
     for(int i=0; i<N_INPUTS; i++) {
@@ -176,11 +197,12 @@ void setup() {
         pinMode(switch_pins[i], INPUT_PULLUP);
     }
 
-    Serial.begin(115200);
-    Serial.println("USB Serial connection established successfully!");
+    // Serial.begin(115200);
+    // Serial.println("USB Serial connection established successfully!");
 }
 
 void loop() {
+    midiHandler.task(); /* Service transports — required for AppleMIDI session handshake/keepalive */
     lv_timer_handler(); /* Update UI */
     delay(20);
     
@@ -192,4 +214,9 @@ void loop() {
         int switch_state = digitalRead(switch_pins[i]);                
         lv_obj_set_state(btns[i], LV_STATE_CHECKED, switch_state ? false : true);
     }
+
+    // int note = random(21, 108);    
+    // midiHandler.sendNoteOn(1, note, 100);
+    // delay(1000);    
+    // midiHandler.sendNoteOff(1, note, 0);
 }
