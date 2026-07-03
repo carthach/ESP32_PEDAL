@@ -22,6 +22,8 @@ lv_obj_t * btns[4];
 int pot_pins[] = {4, 5, 6};
 int switch_pins[] = {1, 2, 42};
 
+int selected_column = 1;
+
 #ifdef WOKWI
 #include <Wire.h>
 #include <Adafruit_FT6206.h> // Touch library
@@ -82,7 +84,7 @@ static void btn_event_cb(lv_event_t * e)
         for(int i=0; i<4; i++) {
             if(btn == btns[i]) {
                 bool isChecked = lv_obj_has_state(btn, LV_STATE_CHECKED);
-                midiHandler.sendControlChange(i+1, 2, isChecked ? 127 : 0);                
+                midiHandler.sendControlChange(2, i+1, isChecked ? 127 : 0);                
             }
         }
     }
@@ -97,11 +99,34 @@ static void slider_event_cb(lv_event_t * e)
     for(int i=0; i<4; i++) {
         if(slider == sliders[i]) {
             int32_t value = lv_slider_get_value(slider);        
-            midiHandler.sendControlChange(i+1, 1, value);
+            midiHandler.sendControlChange(1, i+1, value);
         }
-    }
+    }   
+}
 
-    
+lv_obj_t * container;
+lv_obj_t * col_highlight;
+
+static void highlight_column(int col)    
+{
+    /* 1. Remove any existing style from the highlight object */    
+    lv_obj_remove_style_all(col_highlight); 
+
+    /* 2. Position it to cover Column index 1, spanning all 3 rows */
+    lv_obj_set_grid_cell(col_highlight, 
+                        LV_GRID_ALIGN_STRETCH, col, 1,  /* Align, Col Index (1), Col Span (1) */
+                        LV_GRID_ALIGN_STRETCH, 0, 2); /* Align, Row Index (0), Row Span (3) */
+
+    /* 3. Define and apply the color style */
+    static lv_style_t col_style;
+    lv_style_init(&col_style);
+    lv_style_set_bg_color(&col_style, lv_palette_main(LV_PALETTE_AMBER)); // Target color
+    lv_style_set_bg_opa(&col_style, LV_OPA_COVER);
+
+    lv_obj_add_style(col_highlight, &col_style, LV_PART_MAIN);
+
+    /* 4. Crucial: Send the background to the back so it doesn't block your actual widgets */
+    lv_obj_move_background(col_highlight);
 }
 
 void setup() {           
@@ -139,7 +164,7 @@ void setup() {
     lv_obj_set_style_flex_track_place(screen, LV_FLEX_ALIGN_CENTER, 0);
 
     /* Main grid container with fixed descriptors */
-    lv_obj_t * container = lv_obj_create(screen);
+    container = lv_obj_create(screen);
     int32_t cell_width = 65;
     static const int32_t container_style_grid_column_dsc_array_0[] = {cell_width, cell_width, cell_width, cell_width, LV_GRID_TEMPLATE_LAST};
     lv_obj_set_style_grid_column_dsc_array(container, container_style_grid_column_dsc_array_0, 0);
@@ -166,7 +191,6 @@ void setup() {
         lv_obj_set_style_grid_cell_row_pos(btns[i], 1, 0);
         lv_obj_add_event_cb(btns[i], btn_event_cb, LV_EVENT_CLICKED, NULL);
         
-    
         lv_obj_set_flag(btns[i], LV_OBJ_FLAG_CHECKABLE, true);
         lv_obj_set_state(btns[i], LV_STATE_CHECKED, true);
         lv_obj_t * label = lv_label_create(btns[i]);
@@ -174,17 +198,23 @@ void setup() {
         lv_label_set_text(label, itoa(i, new char[3], 10));
     }
 
-#ifdef WOKWI
+    col_highlight = lv_obj_create(container);
+
+
+#ifdef MIDI_WIFI
     WiFi.begin("Wokwi-GUEST", "", 6);
     while (WiFi.status() != WL_CONNECTED) delay(500);
     midiHandler.addTransport(&rtpMIDI);
     rtpMIDI.begin();
 
+#ifdef WOKWI
     // Needed for Wokwi to connect to the free Wokwi gateway (host.wokwi.internal) for AppleMIDI.
     // I don't know how or why but thanks Claude    
     IPAddress ip;
     if (WiFi.hostByName("host.wokwi.internal", ip))
         _rtpMidiInternal::Applemidi.sendInvite(ip, 5004);
+#endif
+
 #else
     midiHandler.addTransport(&usbMIDI);
     usbMIDI.begin();    
@@ -196,6 +226,8 @@ void setup() {
         pinMode(pot_pins[i], INPUT);
         pinMode(switch_pins[i], INPUT_PULLUP);
     }
+
+    highlight_column(selected_column);
 
     // Serial.begin(115200);
     // Serial.println("USB Serial connection established successfully!");
@@ -209,10 +241,29 @@ void loop() {
     for(int i=0; i<N_INPUTS; i++) {
         int raw_adc = analogRead(pot_pins[i]);
         int slider_value = map(raw_adc, 0, 4095, 0, 127);
-        lv_slider_set_value(sliders[i], slider_value, LV_ANIM_ON);
+        // lv_slider_set_value(sliders[i], slider_value, LV_ANIM_ON);
 
-        int switch_state = digitalRead(switch_pins[i]);                
-        lv_obj_set_state(btns[i], LV_STATE_CHECKED, switch_state ? false : true);
+        // lv_obj_set_state(btns[i], LV_STATE_CHECKED, switch_state ? false : true);
+    }
+
+    int left_state = digitalRead(switch_pins[0]);
+
+    if(left_state == LOW) {
+        if(selected_column > 0) {
+            selected_column--;
+        }
+        highlight_column(selected_column);
+        delay(200); // Debounce delay
+    }
+
+    int right_state = digitalRead(switch_pins[2]);
+    
+    if(right_state == LOW) {
+        if(selected_column < 3) {
+            selected_column++;
+        }
+        highlight_column(selected_column);
+        delay(200); // Debounce delay
     }
 
     // int note = random(21, 108);    
