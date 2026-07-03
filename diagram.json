@@ -13,26 +13,65 @@
     {
       "type": "board-ili9341-cap-touch",
       "id": "lcd1",
-      "top": -68.48,
-      "left": 14.34,
+      "top": -30.08,
+      "left": 43.14,
       "rotate": 90,
       "attrs": {}
+    },
+    { "type": "wokwi-potentiometer", "id": "pot1", "top": 440.3, "left": 95.8, "attrs": {} },
+    { "type": "wokwi-potentiometer", "id": "pot2", "top": 440.3, "left": 182.2, "attrs": {} },
+    { "type": "wokwi-potentiometer", "id": "pot3", "top": 440.3, "left": 278.2, "attrs": {} },
+    {
+      "type": "wokwi-pushbutton",
+      "id": "btn1",
+      "top": 275,
+      "left": 105.6,
+      "attrs": { "color": "green", "xray": "1" }
+    },
+    {
+      "type": "wokwi-pushbutton",
+      "id": "btn2",
+      "top": 275,
+      "left": 182.4,
+      "attrs": { "color": "green", "xray": "1" }
+    },
+    {
+      "type": "wokwi-pushbutton",
+      "id": "btn3",
+      "top": 275,
+      "left": 268.8,
+      "attrs": { "color": "green", "xray": "1" }
     }
   ],
   "connections": [
     [ "esp:TX", "$serialMonitor:RX", "", [] ],
     [ "esp:RX", "$serialMonitor:TX", "", [] ],
-    [ "esp:3V3.1", "lcd1:VCC", "green", [ "h-144.05", "v-249.6" ] ],
-    [ "esp:GND.1", "lcd1:GND", "black", [ "h-134.45", "v-441.6" ] ],
-    [ "lcd1:CS", "esp:10", "green", [ "h-115.2", "v374.4" ] ],
-    [ "esp:9", "lcd1:RST", "green", [ "h-115.25", "v-355.2" ] ],
-    [ "lcd1:D/C", "esp:8", "green", [ "h-96", "v316.8" ] ],
-    [ "lcd1:MOSI", "esp:11", "green", [ "h-86.4", "v355.2" ] ],
-    [ "lcd1:SCK", "esp:12", "green", [ "h-76.8", "v355.2" ] ],
-    [ "lcd1:LED", "esp:3V3.2", "green", [ "h-67.2", "v192" ] ],
-    [ "lcd1:MISO", "esp:13", "green", [ "h-57.6", "v345.6" ] ],
-    [ "lcd1:SCL", "esp:3", "green", [ "h-48", "v278.4" ] ],
-    [ "lcd1:SDA", "esp:46", "green", [ "h-38.4", "v278.4" ] ]
+    [ "esp:3V3.1", "lcd1:VCC", "red", [ "h-140", "v-250" ] ],
+    [ "esp:GND.1", "lcd1:GND", "black", [ "h-130", "v-440" ] ],
+    [ "lcd1:CS", "esp:10", "green", [ "h-120", "v370" ] ],
+    [ "esp:9", "lcd1:RST", "orange", [ "h-110", "v-350" ] ],
+    [ "lcd1:D/C", "esp:8", "blue", [ "h-100", "v310" ] ],
+    [ "lcd1:MOSI", "esp:11", "purple", [ "h-90", "v350" ] ],
+    [ "lcd1:SCK", "esp:12", "yellow", [ "h-80", "v350" ] ],
+    [ "lcd1:LED", "esp:3V3.2", "red", [ "h-70", "v190" ] ],
+    [ "lcd1:MISO", "esp:13", "gray", [ "h-60", "v340" ] ],
+    [ "lcd1:SCL", "esp:3", "cyan", [ "h-50", "v270" ] ],
+    [ "lcd1:SDA", "esp:46", "magenta", [ "h-40", "v270" ] ],
+    [ "esp:GND.4", "pot1:GND", "black", [ "v57.6", "h48" ] ],
+    [ "esp:GND.4", "pot2:GND", "black", [ "v57.6", "h134.4" ] ],
+    [ "esp:GND.4", "pot3:GND", "black", [ "v57.6", "h230.4" ] ],
+    [ "esp:3V3.1", "pot1:VCC", "red", [ "v278.4", "h154.35" ] ],
+    [ "esp:3V3.1", "pot2:VCC", "red", [ "v278.4", "h240.75" ] ],
+    [ "esp:3V3.1", "pot3:VCC", "red", [ "v278.4", "h336.75" ] ],
+    [ "esp:4", "pot1:SIG", "green", [ "v268.8", "h144.35" ] ],
+    [ "esp:5", "pot2:SIG", "green", [ "v259.2", "h230.75" ] ],
+    [ "esp:6", "pot3:SIG", "green", [ "v249.6", "h326.75" ] ],
+    [ "esp:1", "btn1:1.l", "green", [ "v-76.8", "h28.8" ] ],
+    [ "esp:2", "btn2:1.l", "green", [ "v-86.4", "h105.6" ] ],
+    [ "esp:42", "btn3:1.l", "green", [ "v-96", "h192" ] ],
+    [ "esp:GND.2", "btn1:2.r", "black", [ "v-28.8", "h95.8" ] ],
+    [ "esp:GND.2", "btn2:2.r", "black", [ "v-28.8", "h172.6" ] ],
+    [ "esp:GND.2", "btn3:2.r", "black", [ "v-28.8", "h259" ] ]
   ],
   "dependencies": {}
 }
