@@ -22,6 +22,7 @@ lv_obj_t * btns[4];
 int pot_pins[] = {4, 5, 6};
 int switch_pins[] = {1, 2, 42};
 
+int left_state, right_state;
 int selected_column = 1;
 
 #ifdef WOKWI
@@ -229,6 +230,9 @@ void setup() {
 
     highlight_column(selected_column);
 
+    left_state = digitalRead(switch_pins[0]);
+    right_state = digitalRead(switch_pins[2]);
+
     // Serial.begin(115200);
     // Serial.println("USB Serial connection established successfully!");
 }
@@ -246,24 +250,26 @@ void loop() {
         // lv_obj_set_state(btns[i], LV_STATE_CHECKED, switch_state ? false : true);
     }
 
-    int left_state = digitalRead(switch_pins[0]);
+    int new_left_state = digitalRead(switch_pins[0]);
 
-    if(left_state == LOW) {
+    if(new_left_state != left_state) {
         if(selected_column > 0) {
             selected_column--;
         }
         highlight_column(selected_column);
         delay(200); // Debounce delay
+        left_state = new_left_state;
     }
 
-    int right_state = digitalRead(switch_pins[2]);
+    int new_right_state = digitalRead(switch_pins[2]);
     
-    if(right_state == LOW) {
+    if(new_right_state != right_state) {
         if(selected_column < 3) {
             selected_column++;
         }
         highlight_column(selected_column);
         delay(200); // Debounce delay
+        right_state = new_right_state;
     }
 
     // int note = random(21, 108);    
