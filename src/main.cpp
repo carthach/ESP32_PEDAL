@@ -16,6 +16,18 @@ USBDeviceConnection usbMIDI("ESP32 MIDI");
 
 #define N_TRACKS 4
 
+// --- Bright neon LED colour scheme -----------------------------------------
+#define COL_BG        0x03040A  // near-black, lets neon pop on the ILI9341
+#define COL_PANEL     0x0B0F1C  // slightly lifted panel
+#define COL_TRACK     0x1E2A44  // unlit slider channel (brighter, more visible)
+#define COL_LED       0x00FFF0  // full-bright neon cyan - lit indicator
+#define COL_LED_KNOB  0xCCFFFF  // glowing icy-white knob
+#define COL_DIM_TRACK 0x161C2E  // locked slider channel
+#define COL_DIM_LED   0x2E5A66  // locked indicator (dim teal)
+#define COL_DIM_KNOB  0x477C8C  // locked knob (steel teal)
+#define COL_ACCENT    0xFF2BD1  // hot neon magenta selection highlight
+#define COL_TEXT      0xEBFFFF  // bright near-white cyan text
+
 // Soft-takeover state for a single track's slider.
 //   PICKUP - slider is locked (greyed out); the pot must reach its value first
 //   LIVE   - the pot has caught up and now drives the slider
@@ -25,6 +37,7 @@ typedef struct{
     lv_obj_t *slider;
     lv_obj_t *btn;
     SyncState state;
+    int last_cc;    // last CC value sent, so we only transmit on a real change
 } track;
 
 track tracks[N_TRACKS];
@@ -89,33 +102,7 @@ void touch_read(lv_indev_t * indev, lv_indev_data_t * data)
 }
 #endif
 
-static void btn_event_cb(lv_event_t * e)
-{
-    lv_event_code_t code = lv_event_get_code(e);
-    lv_obj_t * btn = lv_event_get_target_obj(e);
-    if(code == LV_EVENT_CLICKED) {
-        for(int i=0; i<4; i++) {
-            if(btn == tracks[i].btn) {
-                bool isChecked = lv_obj_has_state(btn, LV_STATE_CHECKED);
-                midiHandler.sendControlChange(2, i+1, isChecked ? 127 : 0);                
-            }
-        }
-    }
-}
-
 static lv_obj_t * label;
-
-static void slider_event_cb(lv_event_t * e)
-{
-    lv_obj_t * slider = lv_event_get_target_obj(e);
-
-    for(int i=0; i<4; i++) {
-        if(slider == tracks[i].slider) {
-            int32_t value = lv_slider_get_value(slider);        
-            midiHandler.sendControlChange(1, i+1, value);
-        }
-    }   
-}
 
 lv_obj_t * container;
 lv_obj_t * col_highlight;
@@ -135,7 +122,7 @@ static void highlight_column(int col)
     lv_style_init(&col_style);
     
     // Set border color, width, and full opacity
-    lv_style_set_border_color(&col_style, lv_palette_main(LV_PALETTE_AMBER)); 
+    lv_style_set_border_color(&col_style, lv_color_hex(COL_ACCENT));
     lv_style_set_border_width(&col_style, 3); // Adjust thickness (in pixels) as needed
     lv_style_set_border_opa(&col_style, LV_OPA_COVER);
 
@@ -147,14 +134,14 @@ static void disable_slider(lv_obj_t* slider)
 {
     lv_obj_set_state(slider, LV_STATE_DISABLED, true);
 
-    // Gray out the Main Track background
-    lv_obj_set_style_bg_color(slider, lv_color_hex(0x888888), LV_PART_MAIN | LV_STATE_DISABLED);
+    // Dim the Main Track background
+    lv_obj_set_style_bg_color(slider, lv_color_hex(COL_DIM_TRACK), LV_PART_MAIN | LV_STATE_DISABLED);
 
-    // Gray out the Indicator (the filled progression bar)
-    lv_obj_set_style_bg_color(slider, lv_color_hex(0xAAAAAA), LV_PART_INDICATOR | LV_STATE_DISABLED);
+    // Dim the Indicator (the filled progression bar)
+    lv_obj_set_style_bg_color(slider, lv_color_hex(COL_DIM_LED), LV_PART_INDICATOR | LV_STATE_DISABLED);
 
-    // Gray out the Knob (the circular handle)
-    lv_obj_set_style_bg_color(slider, lv_color_hex(0xCCCCCC), LV_PART_KNOB | LV_STATE_DISABLED);
+    // Dim the Knob (the circular handle)
+    lv_obj_set_style_bg_color(slider, lv_color_hex(COL_DIM_KNOB), LV_PART_KNOB | LV_STATE_DISABLED);
 }
 
 static void enable_slider(lv_obj_t* slider)
@@ -162,13 +149,13 @@ static void enable_slider(lv_obj_t* slider)
     lv_obj_set_state(slider, LV_STATE_DISABLED, false);
 
     // Restore the Main Track background color
-    lv_obj_set_style_bg_color(slider, lv_color_hex(0xE0E0E0), LV_PART_MAIN | LV_STATE_DEFAULT);
+    lv_obj_set_style_bg_color(slider, lv_color_hex(COL_TRACK), LV_PART_MAIN | LV_STATE_DEFAULT);
 
     // Restore the Indicator color
-    lv_obj_set_style_bg_color(slider, lv_color_hex(0x007BFF), LV_PART_INDICATOR | LV_STATE_DEFAULT);
+    lv_obj_set_style_bg_color(slider, lv_color_hex(COL_LED), LV_PART_INDICATOR | LV_STATE_DEFAULT);
 
     // Restore the Knob color
-    lv_obj_set_style_bg_color(slider, lv_color_hex(0x0066FF), LV_PART_KNOB | LV_STATE_DEFAULT);
+    lv_obj_set_style_bg_color(slider, lv_color_hex(COL_LED_KNOB), LV_PART_KNOB | LV_STATE_DEFAULT);
 }
 
 // A single pot drives whichever column is selected. To avoid the slider jumping
@@ -195,6 +182,14 @@ static void sync_track_to_pot(track &t, int pot_value)
     }
 
     lv_slider_set_value(t.slider, pot_value, LV_ANIM_OFF);
+
+    // Only transmit when the value actually changed. ADC noise flickers the
+    // reading by a step or two while the pot is still; without this the display
+    // jitters and MIDI is flooded with redundant CCs.
+    if(pot_value != t.last_cc) {
+        midiHandler.sendControlChange(1, selected_column + 1, pot_value);
+        t.last_cc = pot_value;
+    }
 }
 
 // Move the selection, clamped to valid columns, and re-arm pickup on the
@@ -239,6 +234,8 @@ void setup() {
     lv_display_set_buffers(disp, buf1, NULL, sizeof(buf1), LV_DISPLAY_RENDER_MODE_PARTIAL);
 
     lv_obj_t * screen = lv_screen_active();
+    lv_obj_set_style_bg_color(screen, lv_color_hex(COL_BG), LV_PART_MAIN);
+    lv_obj_set_style_bg_opa(screen, LV_OPA_COVER, LV_PART_MAIN);
     lv_obj_set_flex_flow(screen, LV_FLEX_FLOW_COLUMN);
     lv_obj_set_style_flex_main_place(screen, LV_FLEX_ALIGN_CENTER, 0);
     lv_obj_set_style_flex_cross_place(screen, LV_FLEX_ALIGN_CENTER, 0);
@@ -253,6 +250,9 @@ void setup() {
     lv_obj_set_style_grid_row_dsc_array(container, container_style_grid_row_dsc_array_1, 0);
     lv_obj_set_style_layout(container, LV_LAYOUT_GRID, 0);
     lv_obj_set_size(container, 320, 240);
+    lv_obj_set_style_bg_color(container, lv_color_hex(COL_PANEL), 0);
+    lv_obj_set_style_bg_opa(container, LV_OPA_COVER, 0);
+    lv_obj_set_style_border_width(container, 0, 0);
     
     for(int i=0; i<4; i++) {
         tracks[i].slider = lv_slider_create(container);
@@ -261,23 +261,27 @@ void setup() {
         lv_obj_set_style_grid_cell_x_align(tracks[i].slider, LV_GRID_ALIGN_CENTER, 0);
         lv_obj_set_style_grid_cell_column_pos(tracks[i].slider, i, 0);
         lv_obj_set_style_grid_cell_y_align(tracks[i].slider, LV_GRID_ALIGN_CENTER, 0);
-        lv_obj_set_style_grid_cell_row_pos(tracks[i].slider, 0, 0);
-        lv_obj_add_event_cb(tracks[i].slider, slider_event_cb, LV_EVENT_VALUE_CHANGED, NULL);
+        lv_obj_set_style_grid_cell_row_pos(tracks[i].slider, 0, 0);        
         lv_slider_set_range(tracks[i].slider, 0, 127);
         
         tracks[i].btn = lv_btn_create(container);
         lv_obj_set_style_grid_cell_x_align(tracks[i].btn, LV_GRID_ALIGN_CENTER, 0);
         lv_obj_set_style_grid_cell_column_pos(tracks[i].btn, i, 0);
         lv_obj_set_style_grid_cell_y_align(tracks[i].btn, LV_GRID_ALIGN_CENTER, 0);
-        lv_obj_set_style_grid_cell_row_pos(tracks[i].btn, 1, 0);
-        lv_obj_add_event_cb(tracks[i].btn, btn_event_cb, LV_EVENT_CLICKED, NULL);
+        lv_obj_set_style_grid_cell_row_pos(tracks[i].btn, 1, 0);        
         
         lv_obj_set_flag(tracks[i].btn, LV_OBJ_FLAG_CHECKABLE, true);
         lv_obj_set_state(tracks[i].btn, LV_STATE_CHECKED, true);
+        lv_obj_set_style_border_width(tracks[i].btn, 0, 0);
+        lv_obj_set_style_bg_color(tracks[i].btn, lv_color_hex(COL_TRACK), LV_PART_MAIN);
+        lv_obj_set_style_bg_color(tracks[i].btn, lv_color_hex(COL_ACCENT), LV_PART_MAIN | LV_STATE_CHECKED);
+
         lv_obj_t * label = lv_label_create(tracks[i].btn);
         lv_obj_set_align(label, LV_ALIGN_CENTER);
+        lv_obj_set_style_text_color(label, lv_color_hex(COL_TEXT), 0);
         lv_label_set_text(label, itoa(i, new char[3], 10));
 
+        tracks[i].last_cc = -1; // force the first real value to be sent
         arm_pickup(tracks[i]); // start locked until the pot picks each track up
     }
 
@@ -342,8 +346,13 @@ void loop() {
     pot_value = map(pot_value, 0, 4095, 0, 127);
     sync_track_to_pot(tracks[selected_column], pot_value);
 
-    // int note = random(21, 108);    
-    // midiHandler.sendNoteOn(1, note, 100);
-    // delay(1000);    
-    // midiHandler.sendNoteOff(1, note, 0);
+    int switch_value = digitalRead(switch_pins[1]);
+
+    bool arm_btn_state = lv_obj_get_state(tracks[selected_column].btn) == LV_STATE_CHECKED ? true : false;
+    bool new_arm_btn_state = (switch_value == HIGH) ? true : false;
+
+    if(new_arm_btn_state != arm_btn_state) {
+        lv_obj_set_state(tracks[selected_column].btn, LV_STATE_CHECKED, new_arm_btn_state);
+        midiHandler.sendControlChange(2, selected_column + 1, new_arm_btn_state ? 127 : 0);
+    }
 }
