@@ -14,8 +14,20 @@ RTPMIDIConnection rtpMIDI;
 USBDeviceConnection usbMIDI("ESP32 MIDI");
 #endif
 
-lv_obj_t *sliders[4];
-lv_obj_t * btns[4];
+#define N_TRACKS 4
+
+// Soft-takeover state for a single track's slider.
+//   PICKUP - slider is locked (greyed out); the pot must reach its value first
+//   LIVE   - the pot has caught up and now drives the slider
+enum SyncState {PICKUP, LIVE};
+
+typedef struct{
+    lv_obj_t *slider;
+    lv_obj_t *btn;
+    SyncState state;
+} track;
+
+track tracks[N_TRACKS];
 
 #define N_INPUTS 3
 
@@ -83,7 +95,7 @@ static void btn_event_cb(lv_event_t * e)
     lv_obj_t * btn = lv_event_get_target_obj(e);
     if(code == LV_EVENT_CLICKED) {
         for(int i=0; i<4; i++) {
-            if(btn == btns[i]) {
+            if(btn == tracks[i].btn) {
                 bool isChecked = lv_obj_has_state(btn, LV_STATE_CHECKED);
                 midiHandler.sendControlChange(2, i+1, isChecked ? 127 : 0);                
             }
@@ -98,7 +110,7 @@ static void slider_event_cb(lv_event_t * e)
     lv_obj_t * slider = lv_event_get_target_obj(e);
 
     for(int i=0; i<4; i++) {
-        if(slider == sliders[i]) {
+        if(slider == tracks[i].slider) {
             int32_t value = lv_slider_get_value(slider);        
             midiHandler.sendControlChange(1, i+1, value);
         }
@@ -118,19 +130,87 @@ static void highlight_column(int col)
                         LV_GRID_ALIGN_STRETCH, col, 1,  /* Align, Col Index (1), Col Span (1) */
                         LV_GRID_ALIGN_STRETCH, 0, 2); /* Align, Row Index (0), Row Span (3) */
 
-    /* 3. Define and apply the color style */
+    /* 3. Define and apply the border style */
     static lv_style_t col_style;
     lv_style_init(&col_style);
-    lv_style_set_bg_color(&col_style, lv_palette_main(LV_PALETTE_AMBER)); // Target color
-    lv_style_set_bg_opa(&col_style, LV_OPA_COVER);
+    
+    // Set border color, width, and full opacity
+    lv_style_set_border_color(&col_style, lv_palette_main(LV_PALETTE_AMBER)); 
+    lv_style_set_border_width(&col_style, 3); // Adjust thickness (in pixels) as needed
+    lv_style_set_border_opa(&col_style, LV_OPA_COVER);
 
+    // Apply the style to the column highlight object
     lv_obj_add_style(col_highlight, &col_style, LV_PART_MAIN);
-
-    /* 4. Crucial: Send the background to the back so it doesn't block your actual widgets */
-    lv_obj_move_background(col_highlight);
 }
 
-void setup() {           
+static void disable_slider(lv_obj_t* slider)
+{
+    lv_obj_set_state(slider, LV_STATE_DISABLED, true);
+
+    // Gray out the Main Track background
+    lv_obj_set_style_bg_color(slider, lv_color_hex(0x888888), LV_PART_MAIN | LV_STATE_DISABLED);
+
+    // Gray out the Indicator (the filled progression bar)
+    lv_obj_set_style_bg_color(slider, lv_color_hex(0xAAAAAA), LV_PART_INDICATOR | LV_STATE_DISABLED);
+
+    // Gray out the Knob (the circular handle)
+    lv_obj_set_style_bg_color(slider, lv_color_hex(0xCCCCCC), LV_PART_KNOB | LV_STATE_DISABLED);
+}
+
+static void enable_slider(lv_obj_t* slider)
+{
+    lv_obj_set_state(slider, LV_STATE_DISABLED, false);
+
+    // Restore the Main Track background color
+    lv_obj_set_style_bg_color(slider, lv_color_hex(0xE0E0E0), LV_PART_MAIN | LV_STATE_DEFAULT);
+
+    // Restore the Indicator color
+    lv_obj_set_style_bg_color(slider, lv_color_hex(0x007BFF), LV_PART_INDICATOR | LV_STATE_DEFAULT);
+
+    // Restore the Knob color
+    lv_obj_set_style_bg_color(slider, lv_color_hex(0x0066FF), LV_PART_KNOB | LV_STATE_DEFAULT);
+}
+
+// A single pot drives whichever column is selected. To avoid the slider jumping
+// when you switch columns (the pot rarely matches the new track's value), the
+// slider is locked until the pot moves to within PICKUP_THRESHOLD of it.
+static const int PICKUP_THRESHOLD = 2;
+
+// Lock the slider and wait for the pot to catch up before it takes over.
+static void arm_pickup(track &t)
+{
+    disable_slider(t.slider);
+    t.state = PICKUP;
+}
+
+// Drive the selected track's slider from the pot, honouring soft takeover.
+static void sync_track_to_pot(track &t, int pot_value)
+{
+    if(t.state == PICKUP) {
+        int slider_value = lv_slider_get_value(t.slider);
+        if(abs(pot_value - slider_value) > PICKUP_THRESHOLD)
+            return;                     // pot hasn't caught up yet - stay locked
+        enable_slider(t.slider);
+        t.state = LIVE;
+    }
+
+    lv_slider_set_value(t.slider, pot_value, LV_ANIM_OFF);
+}
+
+// Move the selection, clamped to valid columns, and re-arm pickup on the
+// newly selected track so its slider waits for the pot again.
+static void select_column(int col)
+{
+    if(col < 0) col = 0;
+    if(col > N_TRACKS - 1) col = N_TRACKS - 1;
+    if(col == selected_column) return;
+
+    selected_column = col;
+    arm_pickup(tracks[col]);
+    highlight_column(col);
+}
+
+void setup() {
     lv_init();
     lv_tick_set_cb(my_tick);
 
@@ -175,28 +255,30 @@ void setup() {
     lv_obj_set_size(container, 320, 240);
     
     for(int i=0; i<4; i++) {
-        sliders[i] = lv_slider_create(container);
-        lv_slider_set_orientation(sliders[i], LV_SLIDER_ORIENTATION_VERTICAL);    
-        lv_obj_set_size(sliders[i], 30, 140);    
-        lv_obj_set_style_grid_cell_x_align(sliders[i], LV_GRID_ALIGN_CENTER, 0);
-        lv_obj_set_style_grid_cell_column_pos(sliders[i], i, 0);
-        lv_obj_set_style_grid_cell_y_align(sliders[i], LV_GRID_ALIGN_CENTER, 0);
-        lv_obj_set_style_grid_cell_row_pos(sliders[i], 0, 0);
-        lv_obj_add_event_cb(sliders[i], slider_event_cb, LV_EVENT_VALUE_CHANGED, NULL);
-        lv_slider_set_range(sliders[i], 0, 127);
+        tracks[i].slider = lv_slider_create(container);
+        lv_slider_set_orientation(tracks[i].slider, LV_SLIDER_ORIENTATION_VERTICAL);    
+        lv_obj_set_size(tracks[i].slider, 30, 140);    
+        lv_obj_set_style_grid_cell_x_align(tracks[i].slider, LV_GRID_ALIGN_CENTER, 0);
+        lv_obj_set_style_grid_cell_column_pos(tracks[i].slider, i, 0);
+        lv_obj_set_style_grid_cell_y_align(tracks[i].slider, LV_GRID_ALIGN_CENTER, 0);
+        lv_obj_set_style_grid_cell_row_pos(tracks[i].slider, 0, 0);
+        lv_obj_add_event_cb(tracks[i].slider, slider_event_cb, LV_EVENT_VALUE_CHANGED, NULL);
+        lv_slider_set_range(tracks[i].slider, 0, 127);
         
-        btns[i] = lv_btn_create(container);
-        lv_obj_set_style_grid_cell_x_align(btns[i], LV_GRID_ALIGN_CENTER, 0);
-        lv_obj_set_style_grid_cell_column_pos(btns[i], i, 0);
-        lv_obj_set_style_grid_cell_y_align(btns[i], LV_GRID_ALIGN_CENTER, 0);
-        lv_obj_set_style_grid_cell_row_pos(btns[i], 1, 0);
-        lv_obj_add_event_cb(btns[i], btn_event_cb, LV_EVENT_CLICKED, NULL);
+        tracks[i].btn = lv_btn_create(container);
+        lv_obj_set_style_grid_cell_x_align(tracks[i].btn, LV_GRID_ALIGN_CENTER, 0);
+        lv_obj_set_style_grid_cell_column_pos(tracks[i].btn, i, 0);
+        lv_obj_set_style_grid_cell_y_align(tracks[i].btn, LV_GRID_ALIGN_CENTER, 0);
+        lv_obj_set_style_grid_cell_row_pos(tracks[i].btn, 1, 0);
+        lv_obj_add_event_cb(tracks[i].btn, btn_event_cb, LV_EVENT_CLICKED, NULL);
         
-        lv_obj_set_flag(btns[i], LV_OBJ_FLAG_CHECKABLE, true);
-        lv_obj_set_state(btns[i], LV_STATE_CHECKED, true);
-        lv_obj_t * label = lv_label_create(btns[i]);
+        lv_obj_set_flag(tracks[i].btn, LV_OBJ_FLAG_CHECKABLE, true);
+        lv_obj_set_state(tracks[i].btn, LV_STATE_CHECKED, true);
+        lv_obj_t * label = lv_label_create(tracks[i].btn);
         lv_obj_set_align(label, LV_ALIGN_CENTER);
         lv_label_set_text(label, itoa(i, new char[3], 10));
+
+        arm_pickup(tracks[i]); // start locked until the pot picks each track up
     }
 
     col_highlight = lv_obj_create(container);
@@ -242,35 +324,23 @@ void loop() {
     lv_timer_handler(); /* Update UI */
     delay(20);
     
-    for(int i=0; i<N_INPUTS; i++) {
-        int raw_adc = analogRead(pot_pins[i]);
-        int slider_value = map(raw_adc, 0, 4095, 0, 127);
-        // lv_slider_set_value(sliders[i], slider_value, LV_ANIM_ON);
-
-        // lv_obj_set_state(btns[i], LV_STATE_CHECKED, switch_state ? false : true);
-    }
-
     int new_left_state = digitalRead(switch_pins[0]);
-
     if(new_left_state != left_state) {
-        if(selected_column > 0) {
-            selected_column--;
-        }
-        highlight_column(selected_column);
+        select_column(selected_column - 1);
         delay(200); // Debounce delay
         left_state = new_left_state;
     }
 
     int new_right_state = digitalRead(switch_pins[2]);
-    
     if(new_right_state != right_state) {
-        if(selected_column < 3) {
-            selected_column++;
-        }
-        highlight_column(selected_column);
+        select_column(selected_column + 1);
         delay(200); // Debounce delay
         right_state = new_right_state;
     }
+
+    int pot_value = analogRead(pot_pins[1]);
+    pot_value = map(pot_value, 0, 4095, 0, 127);
+    sync_track_to_pot(tracks[selected_column], pot_value);
 
     // int note = random(21, 108);    
     // midiHandler.sendNoteOn(1, note, 100);
